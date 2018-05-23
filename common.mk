@@ -17,7 +17,7 @@ endif
 common_header_export_path := qcom/display
 
 #Common libraries external to display HAL
-common_libs := liblog libutils libcutils libhardware
+common_libs := libEGL liblog libutils libcutils libhardware
 
 #Common C flags
 common_flags := -DDEBUG_CALC_FPS -Wno-missing-field-initializers

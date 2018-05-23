@@ -73,30 +73,21 @@ static bool canFallback(int usage, bool triedSystem)
     return true;
 }
 
-/* The default policy is to return cached buffers unless the client explicity
- * sets the PRIVATE_UNCACHED flag or indicates that the buffer will be rarely
- * read or written in software. Any combination with a _RARELY_ flag will be
- * treated as uncached. */
-static bool useUncached(const int& usage) {
-    if ((usage & GRALLOC_USAGE_PROTECTED) or
-        (usage & GRALLOC_USAGE_PRIVATE_UNCACHED) or
-        ((usage & GRALLOC_USAGE_SW_WRITE_MASK) == GRALLOC_USAGE_SW_WRITE_RARELY) or
-        ((usage & GRALLOC_USAGE_SW_READ_MASK) ==  GRALLOC_USAGE_SW_READ_RARELY))
+static bool useUncached(int usage)
+{
+    if (usage & GRALLOC_USAGE_PRIVATE_UNCACHED)
         return true;
-
+    if(((usage & GRALLOC_USAGE_SW_WRITE_MASK) == GRALLOC_USAGE_SW_WRITE_RARELY)
+       ||((usage & GRALLOC_USAGE_SW_READ_MASK) == GRALLOC_USAGE_SW_READ_RARELY))
+        return true;
     return false;
 }
 
 //-------------- AdrenoMemInfo-----------------------//
 AdrenoMemInfo::AdrenoMemInfo()
 {
-    LINK_adreno_compute_aligned_width_and_height = NULL;
-    LINK_adreno_compute_padding = NULL;
-
     libadreno_utils = ::dlopen("libadreno_utils.so", RTLD_NOW);
     if (libadreno_utils) {
-        *(void **)&LINK_adreno_compute_aligned_width_and_height =
-            ::dlsym(libadreno_utils, "compute_aligned_width_and_height");
         *(void **)&LINK_adreno_compute_padding = ::dlsym(libadreno_utils,
                                            "compute_surface_padding");
     }
@@ -109,22 +100,18 @@ AdrenoMemInfo::~AdrenoMemInfo()
     }
 }
 
-void AdrenoMemInfo::getAlignedWidthAndHeight(int width, int height, int format,
-                              int& aligned_w, int& aligned_h)
+int AdrenoMemInfo::getStride(int width, int format)
 {
-    aligned_w = width;
-    aligned_h = height;
+    int stride = ALIGN(width, 32);
     // Currently surface padding is only computed for RGB* surfaces.
     if (format <= HAL_PIXEL_FORMAT_BGRA_8888) {
-        aligned_w = ALIGN(width, 32);
-        aligned_h = ALIGN(height, 32);
         // Don't add any additional padding if debug.gralloc.map_fb_memory
         // is enabled
         char property[PROPERTY_VALUE_MAX];
         if((property_get("debug.gralloc.map_fb_memory", property, NULL) > 0) &&
            (!strncmp(property, "1", PROPERTY_VALUE_MAX ) ||
            (!strncasecmp(property,"true", PROPERTY_VALUE_MAX )))) {
-              return;
+              return stride;
         }
 
         int bpp = 4;
@@ -138,38 +125,24 @@ void AdrenoMemInfo::getAlignedWidthAndHeight(int width, int height, int format,
                 break;
             default: break;
         }
-        if (libadreno_utils) {
+        if ((libadreno_utils) && (LINK_adreno_compute_padding)) {
+            int surface_tile_height = 1;   // Linear surface
             int raster_mode         = 0;   // Adreno unknown raster mode.
             int padding_threshold   = 512; // Threshold for padding surfaces.
-            // the function below computes aligned width and aligned height
-            // based on linear or macro tile mode selected.
-            if(LINK_adreno_compute_aligned_width_and_height) {
-               int tile_mode = 0;   // Linear surface
-               LINK_adreno_compute_aligned_width_and_height(width,
-                                     height, bpp, tile_mode,
-                                     raster_mode, padding_threshold,
-                                     &aligned_w, &aligned_h);
-
-            } else if(LINK_adreno_compute_padding) {
-                int surface_tile_height = 1;   // Linear surface
-                aligned_w = LINK_adreno_compute_padding(width, bpp,
-                                     surface_tile_height, raster_mode,
-                                     padding_threshold);
-                ALOGV("%s: Warning!! Old GFX API is used to calculate stride",
-                                                            __FUNCTION__);
-            } else {
-                ALOGW("%s: Warning!! Symbols compute_surface_padding and " \
-                    "compute_aligned_width_and_height not found", __FUNCTION__);
-            }
+            // the function below expects the width to be a multiple of
+            // 32 pixels, hence we pass stride instead of width.
+            stride = LINK_adreno_compute_padding(stride, bpp,
+                                      surface_tile_height, raster_mode,
+                                      padding_threshold);
         }
     } else {
         switch (format)
         {
             case HAL_PIXEL_FORMAT_YCrCb_420_SP_ADRENO:
-                aligned_w = ALIGN(width, 32);
+                stride = ALIGN(width, 32);
                 break;
             case HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED:
-                aligned_w = ALIGN(width, 128);
+                stride = ALIGN(width, 128);
                 break;
             case HAL_PIXEL_FORMAT_YCbCr_420_SP:
             case HAL_PIXEL_FORMAT_YCrCb_420_SP:
@@ -178,22 +151,21 @@ void AdrenoMemInfo::getAlignedWidthAndHeight(int width, int height, int format,
             case HAL_PIXEL_FORMAT_YCrCb_422_SP:
             case HAL_PIXEL_FORMAT_YCbCr_422_I:
             case HAL_PIXEL_FORMAT_YCrCb_422_I:
-                aligned_w = ALIGN(width, 16);
+            case HAL_PIXEL_FORMAT_RAW16:
+            case HAL_PIXEL_FORMAT_RAW_OPAQUE:
+                stride = ALIGN(width, 16);
                 break;
             case HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS:
             case HAL_PIXEL_FORMAT_NV12_ENCODEABLE:
-                aligned_w = VENUS_Y_STRIDE(COLOR_FMT_NV12, width);
-                aligned_h = VENUS_Y_SCANLINES(COLOR_FMT_NV12, height);
+                stride = VENUS_Y_STRIDE(COLOR_FMT_NV12, width);
                 break;
             case HAL_PIXEL_FORMAT_BLOB:
-                break;
-            case HAL_PIXEL_FORMAT_NV21_ZSL:
-                aligned_w = ALIGN(width, 64);
-                aligned_h = ALIGN(height, 64);
+                stride = width;
                 break;
             default: break;
         }
     }
+    return stride;
 }
 
 //-------------- IAllocController-----------------------//
@@ -210,12 +182,7 @@ IAllocController* IAllocController::getInstance(void)
 //-------------- IonController-----------------------//
 IonController::IonController()
 {
-    allocateIonMem();
-}
-
-void IonController::allocateIonMem()
-{
-   mIonAlloc = new IonAlloc();
+    mIonAlloc = new IonAlloc();
 }
 
 int IonController::allocate(alloc_data& data, int usage)
@@ -241,9 +208,10 @@ int IonController::allocate(alloc_data& data, int usage)
             ionFlags |= ION_SECURE;
         } else {
             // for targets/OEMs which do not need HW level protection
-            // do not set ion secure flag & MM heap. Fallback to IOMMU heap.
+            // do not set ion secure flag & MM heap. Fallback to IOMMU heap
+            // and use DRM for such buffers
+            data.allocType |= private_handle_t::PRIV_FLAGS_L3_SECURE_BUFFER;
             ionFlags |= ION_HEAP(ION_IOMMU_HEAP_ID);
-            data.allocType |= private_handle_t::PRIV_FLAGS_PROTECTED_BUFFER;
         }
     } else if(usage & GRALLOC_USAGE_PRIVATE_MM_HEAP) {
         //MM Heap is exclusively a secure heap.
@@ -304,13 +272,10 @@ IMemAlloc* IonController::getAllocator(int flags)
 size_t getBufferSizeAndDimensions(int width, int height, int format,
                                   int& alignedw, int &alignedh)
 {
-    size_t size = 0;
+    size_t size;
 
-    AdrenoMemInfo::getInstance().getAlignedWidthAndHeight(width,
-                                                          height,
-                                                          format,
-                                                          alignedw,
-                                                          alignedh);
+    alignedw = AdrenoMemInfo::getInstance().getStride(width, format);
+    alignedh = ALIGN(height, 32);
     switch (format) {
         case HAL_PIXEL_FORMAT_RGBA_8888:
         case HAL_PIXEL_FORMAT_RGBX_8888:
@@ -340,14 +305,16 @@ size_t getBufferSizeAndDimensions(int width, int height, int format,
         case HAL_PIXEL_FORMAT_YV12:
             if ((format == HAL_PIXEL_FORMAT_YV12) && ((width&1) || (height&1))) {
                 ALOGE("w or h is odd for the YV12 format");
-                return 0;
+                return -EINVAL;
             }
+            alignedh = height;
             size = alignedw*alignedh +
                     (ALIGN(alignedw/2, 16) * (alignedh/2))*2;
             size = ALIGN(size, 4096);
             break;
         case HAL_PIXEL_FORMAT_YCbCr_420_SP:
         case HAL_PIXEL_FORMAT_YCrCb_420_SP:
+            alignedh = height;
             size = ALIGN((alignedw*alignedh) + (alignedw* alignedh)/2 + 1, 4096);
             break;
         case HAL_PIXEL_FORMAT_YCbCr_422_SP:
@@ -356,95 +323,34 @@ size_t getBufferSizeAndDimensions(int width, int height, int format,
         case HAL_PIXEL_FORMAT_YCrCb_422_I:
             if(width & 1) {
                 ALOGE("width is odd for the YUV422_SP format");
-                return 0;
+                return -EINVAL;
             }
+            alignedh = height;
             size = ALIGN(alignedw * alignedh * 2, 4096);
             break;
         case HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS:
         case HAL_PIXEL_FORMAT_NV12_ENCODEABLE:
+            alignedh = VENUS_Y_SCANLINES(COLOR_FMT_NV12, height);
             size = VENUS_BUFFER_SIZE(COLOR_FMT_NV12, width, height);
             break;
         case HAL_PIXEL_FORMAT_BLOB:
+        case HAL_PIXEL_FORMAT_RAW_OPAQUE:
             if(height != 1) {
-                ALOGE("%s: Buffers with format HAL_PIXEL_FORMAT_BLOB \
+                ALOGE("%s: Buffers with RAW_OPAQUE/BLOB formats \
                       must have height==1 ", __FUNCTION__);
-                return 0;
+                return -EINVAL;
             }
+            alignedh = height;
+            alignedw = width;
             size = width;
             break;
-        case HAL_PIXEL_FORMAT_NV21_ZSL:
-            size = ALIGN((alignedw*alignedh) + (alignedw* alignedh)/2, 4096);
-            break;
         default:
-            ALOGE("unrecognized pixel format: 0x%x", format);
-            return 0;
+            ALOGE("%s: unrecognized pixel format: 0x%x", __FUNCTION__, format);
+            return -EINVAL;
     }
 
     return size;
 }
-
-int getYUVPlaneInfo(private_handle_t* hnd, struct android_ycbcr* ycbcr)
-{
-    int err = 0;
-    size_t ystride, cstride;
-    memset(ycbcr->reserved, 0, sizeof(ycbcr->reserved));
-
-    // Get the chroma offsets from the handle width/height. We take advantage
-    // of the fact the width _is_ the stride
-    switch (hnd->format) {
-        //Semiplanar
-        case HAL_PIXEL_FORMAT_YCbCr_420_SP:
-        case HAL_PIXEL_FORMAT_YCbCr_422_SP:
-        case HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS:
-        case HAL_PIXEL_FORMAT_NV12_ENCODEABLE: //Same as YCbCr_420_SP_VENUS
-            ystride = cstride = hnd->width;
-            ycbcr->y  = (void*)hnd->base;
-            ycbcr->cb = (void*)(hnd->base + ystride * hnd->height);
-           ycbcr->cr = (void*)(hnd->base + ystride * hnd->height + 1);
-            ycbcr->ystride = ystride;
-            ycbcr->cstride = cstride;
-            ycbcr->chroma_step = 2;
-        break;
-
-        case HAL_PIXEL_FORMAT_YCrCb_420_SP:
-        case HAL_PIXEL_FORMAT_YCrCb_422_SP:
-        case HAL_PIXEL_FORMAT_YCrCb_420_SP_ADRENO:
-        case HAL_PIXEL_FORMAT_NV21_ZSL:
-            ystride = cstride = hnd->width;
-            ycbcr->y  = (void*)hnd->base;
-            ycbcr->cr = (void*)(hnd->base + ystride * hnd->height);
-            ycbcr->cb = (void*)(hnd->base + ystride * hnd->height + 1);
-            ycbcr->ystride = ystride;
-            ycbcr->cstride = cstride;
-            ycbcr->chroma_step = 2;
-        break;
-
-        //Planar
-        case HAL_PIXEL_FORMAT_YV12:
-            ystride = hnd->width;
-            cstride = ALIGN(hnd->width/2, 16);
-            ycbcr->y  = (void*)hnd->base;
-            ycbcr->cr = (void*)(hnd->base + ystride * hnd->height);
-            ycbcr->cb = (void*)(hnd->base + ystride * hnd->height +
-                    cstride * hnd->height/2);
-            ycbcr->ystride = ystride;
-            ycbcr->cstride = cstride;
-            ycbcr->chroma_step = 1;
-
-       break;
-        //Unsupported formats
-        case HAL_PIXEL_FORMAT_YCbCr_422_I:
-        case HAL_PIXEL_FORMAT_YCrCb_422_I:
-        case HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED:
-        default:
-        ALOGD("%s: Invalid format passed: 0x%x", __FUNCTION__,
-                hnd->format);
-        err = -EINVAL;
-    }
-    return err;
-
-}
-
 
 // Allocate buffer from width, height and format into a
 // private_handle_t. It is the responsibility of the caller

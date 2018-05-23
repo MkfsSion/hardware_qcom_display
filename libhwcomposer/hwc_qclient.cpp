@@ -43,8 +43,7 @@ using namespace qhwc;
 namespace qClient {
 
 // ----------------------------------------------------------------------------
-QClient::QClient(hwc_context_t *ctx) : mHwcContext(ctx),
-        mMPDeathNotifier(new MPDeathNotifier(ctx))
+QClient::QClient(hwc_context_t *ctx) : mHwcContext(ctx)
 {
     ALOGD_IF(QCLIENT_DEBUG, "QClient Constructor invoked");
 }
@@ -56,9 +55,6 @@ QClient::~QClient()
 
 static void securing(hwc_context_t *ctx, uint32_t startEnd) {
     Locker::Autolock _sl(ctx->mDrawLock);
-    //The only way to make this class in this process subscribe to media
-    //player's death.
-    IMediaDeathNotifier::getMediaPlayerService();
 
     ctx->mSecuring = startEnd;
     //We're done securing
@@ -76,15 +72,6 @@ static void unsecuring(hwc_context_t *ctx, uint32_t startEnd) {
         ctx->mSecureMode = false;
     if(ctx->proc)
         ctx->proc->invalidate(ctx->proc);
-}
-
-void QClient::MPDeathNotifier::died() {
-    Locker::Autolock _sl(mHwcContext->mDrawLock);
-    ALOGD_IF(QCLIENT_DEBUG, "Media Player died");
-    mHwcContext->mSecuring = false;
-    mHwcContext->mSecureMode = false;
-    if(mHwcContext->proc)
-        mHwcContext->proc->invalidate(mHwcContext->proc);
 }
 
 static android::status_t screenRefresh(hwc_context_t *ctx) {

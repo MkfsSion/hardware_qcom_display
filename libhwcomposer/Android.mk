@@ -9,10 +9,10 @@ LOCAL_MODULE_TAGS             := optional
 LOCAL_C_INCLUDES              := $(common_includes) $(kernel_includes) \
                                  $(TOP)/external/skia/include/core \
                                  $(TOP)/external/skia/include/images
-LOCAL_SHARED_LIBRARIES        := $(common_libs) libEGL liboverlay \
+LOCAL_SHARED_LIBRARIES        := $(common_libs) liboverlay \
                                  libhdmi libqdutils libhardware_legacy \
                                  libdl libmemalloc libqservice libsync \
-                                 libbinder libmedia libskia libvirtual \
+                                 libbinder libvirtual \
                                  libbfqio_vendor
 LOCAL_CFLAGS                  := $(common_flags) -DLOG_TAG=\"qdhwcomposer\"
 #Enable Dynamic FPS if PHASE_OFFSET is not set

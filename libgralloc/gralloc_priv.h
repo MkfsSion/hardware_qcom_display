@@ -54,20 +54,19 @@ enum {
      * cannot be used with noncontiguous heaps */
     GRALLOC_USAGE_PRIVATE_UNCACHED        =       0x02000000,
 
-    /* Buffer content should be displayed on an primary display only */
-    GRALLOC_USAGE_PRIVATE_INTERNAL_ONLY   =       0x04000000,
-
     /* Buffer content should be displayed on an external display only */
     GRALLOC_USAGE_PRIVATE_EXTERNAL_ONLY   =       0x08000000,
 
-    /* This flag is set for WFD usecase */
-    GRALLOC_USAGE_PRIVATE_WFD             =       0x00200000,
+    /* Only this buffer content should be displayed on external, even if
+     * other EXTERNAL_ONLY buffers are available. Used during suspend.
+     */
+    GRALLOC_USAGE_PRIVATE_EXTERNAL_BLOCK  =       0x00100000,
+
+    /* Close Caption displayed on an external display only */
+    GRALLOC_USAGE_PRIVATE_EXTERNAL_CC     =       0x00200000,
 
     /* CAMERA heap is a carveout heap for camera, is not secured*/
     GRALLOC_USAGE_PRIVATE_CAMERA_HEAP     =       0x00400000,
-
-    /* This flag is used for SECURE display usecase */
-    GRALLOC_USAGE_PRIVATE_SECURE_DISPLAY  =       0x00800000,
 };
 
 enum {
@@ -75,8 +74,7 @@ enum {
     */
     GRALLOC_MODULE_PERFORM_CREATE_HANDLE_FROM_BUFFER = 1,
     GRALLOC_MODULE_PERFORM_GET_STRIDE,
-    GRALLOC_MODULE_PERFORM_GET_CUSTOM_STRIDE_AND_HEIGHT_FROM_HANDLE,
-    GRALLOC_MODULE_PERFORM_GET_YUV_PLANE_INFO,
+    GRALLOC_MODULE_PERFORM_GET_CUSTOM_STRIDE_FROM_HANDLE,
 };
 
 #define GRALLOC_HEAP_MASK   (GRALLOC_USAGE_PRIVATE_UI_CONTIG_HEAP |\
@@ -99,16 +97,11 @@ enum {
     HAL_PIXEL_FORMAT_R_8                    = 0x10D,
     HAL_PIXEL_FORMAT_RG_88                  = 0x10E,
     HAL_PIXEL_FORMAT_YCbCr_444_SP           = 0x10F,
-    HAL_PIXEL_FORMAT_YCrCb_444_SP           = 0x110,
     HAL_PIXEL_FORMAT_YCrCb_422_I            = 0x111,
+    HAL_PIXEL_FORMAT_YCrCb_444_SP           = 0x110,
     HAL_PIXEL_FORMAT_BGRX_8888              = 0x112,
-    HAL_PIXEL_FORMAT_NV21_ZSL               = 0x113,
     HAL_PIXEL_FORMAT_INTERLACE              = 0x180,
-    //v4l2_fourcc('Y', 'U', 'Y', 'L'). 24 bpp YUYV 4:2:2 10 bit per component
-    HAL_PIXEL_FORMAT_YCbCr_422_I_10BIT      = 0x4C595559,
-    //v4l2_fourcc('Y', 'B', 'W', 'C'). 10 bit per component. This compressed
-    //format reduces the memory access bandwidth
-    HAL_PIXEL_FORMAT_YCbCr_422_I_10BIT_COMPRESSED = 0x43574259,
+
 };
 
 /* possible formats for 3D content*/
@@ -144,10 +137,11 @@ struct private_handle_t : public native_handle {
             PRIV_FLAGS_USES_ION           = 0x00000008,
             PRIV_FLAGS_USES_ASHMEM        = 0x00000010,
             PRIV_FLAGS_NEEDS_FLUSH        = 0x00000020,
-            PRIV_FLAGS_INTERNAL_ONLY      = 0x00000040,
-            PRIV_FLAGS_NON_CPU_WRITER     = 0x00000080,
+            PRIV_FLAGS_DO_NOT_FLUSH       = 0x00000040,
+            PRIV_FLAGS_SW_LOCK            = 0x00000080,
             PRIV_FLAGS_NONCONTIGUOUS_MEM  = 0x00000100,
-            PRIV_FLAGS_CACHED             = 0x00000200,
+            // Set by HWC when storing the handle
+            PRIV_FLAGS_HWC_LOCK           = 0x00000200,
             PRIV_FLAGS_SECURE_BUFFER      = 0x00000400,
             // For explicit synchronization
             PRIV_FLAGS_UNSYNCHRONIZED     = 0x00000800,
@@ -155,8 +149,10 @@ struct private_handle_t : public native_handle {
             PRIV_FLAGS_NOT_MAPPED         = 0x00001000,
             // Display on external only
             PRIV_FLAGS_EXTERNAL_ONLY      = 0x00002000,
-            // Set by HWC for protected non secure buffers
-            PRIV_FLAGS_PROTECTED_BUFFER   = 0x00004000,
+            // Display only this buffer on external
+            PRIV_FLAGS_EXTERNAL_BLOCK     = 0x00004000,
+            // Display this buffer on external as close caption
+            PRIV_FLAGS_EXTERNAL_CC        = 0x00008000,
             PRIV_FLAGS_VIDEO_ENCODER      = 0x00010000,
             PRIV_FLAGS_CAMERA_WRITE       = 0x00020000,
             PRIV_FLAGS_CAMERA_READ        = 0x00040000,
@@ -165,7 +161,7 @@ struct private_handle_t : public native_handle {
             PRIV_FLAGS_ITU_R_601          = 0x00200000,
             PRIV_FLAGS_ITU_R_601_FR       = 0x00400000,
             PRIV_FLAGS_ITU_R_709          = 0x00800000,
-            PRIV_FLAGS_SECURE_DISPLAY     = 0x01000000,
+            PRIV_FLAGS_L3_SECURE_BUFFER   = 0x01000000,
         };
 
         // file-descriptors

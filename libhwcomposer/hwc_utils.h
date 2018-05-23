@@ -428,12 +428,12 @@ static inline bool isSecureBuffer(const private_handle_t* hnd) {
 
 // Returns true if the buffer is protected
 static inline bool isProtectedBuffer(const private_handle_t* hnd) {
-    return (hnd && (private_handle_t::PRIV_FLAGS_PROTECTED_BUFFER & hnd->flags));
+    return (hnd && (private_handle_t::PRIV_FLAGS_EXTERNAL_BLOCK & hnd->flags));
 }
 
 //Return true if the buffer is intended for Secure Display
 static inline bool isSecureDisplayBuffer(const private_handle_t* hnd) {
-    return (hnd && (hnd->flags & private_handle_t::PRIV_FLAGS_SECURE_DISPLAY));
+    return (hnd && (hnd->flags & private_handle_t::PRIV_FLAGS_L3_SECURE_BUFFER));
 }
 
 static inline int getWidth(const private_handle_t* hnd) {

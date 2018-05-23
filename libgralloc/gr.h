@@ -19,6 +19,7 @@
 #define GR_H_
 
 #include <stdint.h>
+#include <sys/user.h>
 #include <limits.h>
 #include <sys/cdefs.h>
 #include <hardware/gralloc.h>
@@ -57,7 +58,6 @@ int decideBufferHandlingMechanism(int format, const char *compositionUsed,
 // It is the responsibility of the caller to free the buffer
 int alloc_buffer(private_handle_t **pHnd, int w, int h, int format, int usage);
 void free_buffer(private_handle_t *hnd);
-int getYUVPlaneInfo(private_handle_t* pHnd, struct android_ycbcr* ycbcr);
 
 /*****************************************************************************/
 
@@ -94,13 +94,12 @@ class AdrenoMemInfo : public android::Singleton <AdrenoMemInfo>
     ~AdrenoMemInfo();
 
     /*
-     * Function to compute the adreno aligned width and aligned height
-     * based on the width and format.
+     * Function to compute the adreno stride based on the width and format.
      *
-     * @return aligned width, aligned height
+     * @return stride.
      */
-    void getAlignedWidthAndHeight(int width, int height, int format,
-                                  int& alignedw, int &alignedh);
+    int getStride(int width, int format);
+
     private:
         // Pointer to the padding library.
         void *libadreno_utils;
@@ -110,15 +109,5 @@ class AdrenoMemInfo : public android::Singleton <AdrenoMemInfo>
                                                 int surface_tile_height,
                                                 int screen_tile_height,
                                                 int padding_threshold);
-        // link to the surface padding library.
-        void (*LINK_adreno_compute_aligned_width_and_height) (int width,
-                                                int height,
-                                                int bpp,
-                                                int tile_mode,
-                                                int raster_mode,
-                                                int padding_threshold,
-                                                int *aligned_w,
-                                                int *aligned_h);
-
 };
 #endif /* GR_H_ */

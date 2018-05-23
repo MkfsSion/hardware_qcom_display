@@ -65,7 +65,6 @@ class IonController : public IAllocController {
 
     private:
     IonAlloc* mIonAlloc;
-    void allocateIonMem();
 
 };
 } //end namespace gralloc
